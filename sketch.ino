@@ -15,8 +15,9 @@ DHT dht(DHTPIN, DHTTYPE);
 unsigned long tempoAnterior = 0;
 const unsigned long INTERVALO_LEITURA = 2000; // Intervalo de 2000 ms (2 segundos)
 
-// RF03: Limite de temperatura definido no sistema
+// RF03: Limite de temperatura e margem de histerese
 const float LIMITE_TEMP = 30.0;
+const float HISTERESE = 1.0; // Retorna ao normal apenas em <= 29.0 °C
 
 // Faixa física operacional do sensor DHT22 para validação adicional
 const float TEMP_MIN_VALIDA = -40.0;
@@ -42,6 +43,27 @@ bool leituraValida(float temperatura) {
   return true;
 }
 
+// RF03, RF04 e RF05: Função dedicada para transição de estados com histerese
+EstadoSistema avaliarEstado(float temperatura, EstadoSistema estadoAnterior) {
+  if (!leituraValida(temperatura)) {
+    return ESTADO_FALHA;
+  }
+
+  if (estadoAnterior == ESTADO_ALERTA) {
+    // Só retorna ao estado NORMAL se cair abaixo do limite menos a histerese (<= 29.0 °C)
+    if (temperatura <= (LIMITE_TEMP - HISTERESE)) {
+      return ESTADO_NORMAL;
+    }
+    return ESTADO_ALERTA;
+  } else {
+    // Estando em NORMAL ou recuperando de FALHA, aciona ALERTA acima de 30.0 °C
+    if (temperatura > LIMITE_TEMP) {
+      return ESTADO_ALERTA;
+    }
+    return ESTADO_NORMAL;
+  }
+}
+
 // RF02: Função para apresentar o valor da leitura e o estado do sistema (Serial + LEDs)
 void atualizarSaida(float temperatura, EstadoSistema estado) {
   if (estado == ESTADO_FALHA) {
@@ -59,7 +81,9 @@ void atualizarSaida(float temperatura, EstadoSistema estado) {
     Serial.print(temperatura, 1);
     Serial.print(" °C | Limite: ");
     Serial.print(LIMITE_TEMP, 1);
-    Serial.println(" °C | Estado: ALERTA");
+    Serial.print(" °C (Retorno <= ");
+    Serial.print(LIMITE_TEMP - HISTERESE, 1);
+    Serial.println(" °C) | Estado: ALERTA");
   } else {
     digitalWrite(LED_VERDE, HIGH);
     digitalWrite(LED_VERMELHO, LOW);
@@ -79,6 +103,11 @@ void setup() {
   Serial.print("Intervalo de aquisicao: ");
   Serial.print(INTERVALO_LEITURA);
   Serial.println(" ms");
+  Serial.print("Limite de Alerta: > ");
+  Serial.print(LIMITE_TEMP, 1);
+  Serial.print(" °C | Histerese de retorno: <= ");
+  Serial.print(LIMITE_TEMP - HISTERESE, 1);
+  Serial.println(" °C");
 
   dht.begin();
 
@@ -96,14 +125,8 @@ void loop() {
 
     float temperatura = dht.readTemperature();
 
-    // RF03, RF04 e RF05: Avaliação de falha, limite e transição de estados
-    if (!leituraValida(temperatura)) {
-      estadoAtual = ESTADO_FALHA;
-    } else if (temperatura > LIMITE_TEMP) {
-      estadoAtual = ESTADO_ALERTA;
-    } else {
-      estadoAtual = ESTADO_NORMAL;
-    }
+    // Atualiza a máquina de estados
+    estadoAtual = avaliarEstado(temperatura, estadoAtual);
 
     // RF02: Apresentação na saída apropriada
     atualizarSaida(temperatura, estadoAtual);
