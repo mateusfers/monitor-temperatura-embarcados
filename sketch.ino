@@ -7,28 +7,50 @@
 // Pinos dos LEDs indicadores
 #define LED_VERDE 12    // Estado Normal
 #define LED_VERMELHO 14 // Estado Alerta
-#define LED_AZUL 27     // Estado Falha (guardado para o próximo commit)
+#define LED_AZUL 27     // Estado Falha
 
 DHT dht(DHTPIN, DHTTYPE);
 
 // RF01: Controle de tempo para aquisição periódica
 unsigned long tempoAnterior = 0;
-const unsigned long INTERVALO_LEITURA = 2000; // Intervalo de 2 segundos (2000 ms)
+const unsigned long INTERVALO_LEITURA = 2000; // Intervalo de 2000 ms (2 segundos)
 
 // RF03: Limite de temperatura definido no sistema
 const float LIMITE_TEMP = 30.0;
 
-// RF04: Estados do sistema
+// Faixa física operacional do sensor DHT22 para validação adicional
+const float TEMP_MIN_VALIDA = -40.0;
+const float TEMP_MAX_VALIDA = 80.0;
+
+// RF04 e RF05: Máquina de estados completa do sistema
 enum EstadoSistema {
   ESTADO_NORMAL,
-  ESTADO_ALERTA
+  ESTADO_ALERTA,
+  ESTADO_FALHA
 };
 
 EstadoSistema estadoAtual = ESTADO_NORMAL;
 
+// RF05: Função que verifica se a leitura do sensor é válida
+bool leituraValida(float temperatura) {
+  if (isnan(temperatura)) {
+    return false;
+  }
+  if (temperatura < TEMP_MIN_VALIDA || temperatura > TEMP_MAX_VALIDA) {
+    return false;
+  }
+  return true;
+}
+
 // RF02: Função para apresentar o valor da leitura e o estado do sistema (Serial + LEDs)
 void atualizarSaida(float temperatura, EstadoSistema estado) {
-  if (estado == ESTADO_ALERTA) {
+  if (estado == ESTADO_FALHA) {
+    digitalWrite(LED_AZUL, HIGH);
+    digitalWrite(LED_VERDE, LOW);
+    digitalWrite(LED_VERMELHO, LOW);
+
+    Serial.println("Temp: INVALIDA | Estado: FALHA (Erro na leitura do sensor)");
+  } else if (estado == ESTADO_ALERTA) {
     digitalWrite(LED_VERMELHO, HIGH);
     digitalWrite(LED_VERDE, LOW);
     digitalWrite(LED_AZUL, LOW);
@@ -74,8 +96,10 @@ void loop() {
 
     float temperatura = dht.readTemperature();
 
-    // RF03 e RF04: Avaliação de limite e transição de estados
-    if (temperatura > LIMITE_TEMP) {
+    // RF03, RF04 e RF05: Avaliação de falha, limite e transição de estados
+    if (!leituraValida(temperatura)) {
+      estadoAtual = ESTADO_FALHA;
+    } else if (temperatura > LIMITE_TEMP) {
       estadoAtual = ESTADO_ALERTA;
     } else {
       estadoAtual = ESTADO_NORMAL;
