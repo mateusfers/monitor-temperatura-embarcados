@@ -11,6 +11,10 @@
 
 DHT dht(DHTPIN, DHTTYPE);
 
+// Variáveis para controle de tempo com millis 
+unsigned long tempoAnterior = 0;
+const long intervaloLeitura = 2000; // Intervalo de 2 segundos (2000 ms)
+
 void setup() {
   // Inicialização da comunicação serial
   Serial.begin(115200);
@@ -26,6 +30,18 @@ void setup() {
 }
 
 void loop() {
-  // Estrutura base inicial (as próximas lógicas virão nos próximos commits)
-  delay(2000);
+  unsigned long tempoAtual = millis();
+
+  // Verifica se já passou o intervalo de tempo definido 
+  if (tempoAtual - tempoAnterior >= intervaloLeitura) {
+    tempoAnterior = tempoAtual;
+
+    // Leitura da temperatura em Celsius
+    float temperatura = dht.readTemperature();
+
+    // Exibição básica da leitura periódica no Monitor Serial 
+    Serial.print("Leitura periodica - Temp: ");
+    Serial.print(temperatura);
+    Serial.println(" °C");
+  }
 }
